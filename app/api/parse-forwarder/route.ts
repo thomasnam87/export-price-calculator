@@ -59,11 +59,12 @@ async function extractWithGemini(base64: string, mimeType: string): Promise<stri
   return result.response.text().trim();
 }
 
-// OpenRouter — OpenAI-compatible API, uses Claude 3.5 Haiku (supports PDF via base64)
+// OpenRouter — dùng google/gemini-2.5-flash (PDF support tốt nhất, gần Gemini direct)
 async function extractWithOpenRouter(base64: string, mimeType: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
 
+  // Gemini 2.5 Flash qua OpenRouter: gửi PDF dưới dạng file URL base64
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -73,24 +74,22 @@ async function extractWithOpenRouter(base64: string, mimeType: string): Promise<
       'X-Title': 'Export Price Calculator',
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-3.5-haiku',
+      model: 'google/gemini-2.5-flash',
       messages: [
-        {
-          role: 'system',
-          content: 'You are a JSON extraction API. You MUST respond with ONLY a valid JSON object. No explanation, no prose, no markdown — pure JSON only.',
-        },
         {
           role: 'user',
           content: [
             {
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: mimeType,
-                data: base64,
+              type: 'text',
+              text: PROMPT,
+            },
+            {
+              type: 'file',
+              file: {
+                filename: 'forwarder-quote.pdf',
+                file_data: `data:${mimeType};base64,${base64}`,
               },
             },
-            { type: 'text', text: PROMPT },
           ],
         },
       ],
