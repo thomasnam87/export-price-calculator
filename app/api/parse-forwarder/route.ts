@@ -33,46 +33,103 @@ RULES:
 - If container type is "cont 40" or "40'" → "40ft". "40HC"/"40HQ" → "40HQ". "20'" → "20ft".
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-export async function POST(req: NextRequest) {
+function stripFences(text: string): string {
+  return text.startsWith('```')
+    ? text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
+    : text;
+}
+
+async function extractWithGemini(base64: string, mimeType: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
+  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+
+  const genai = new GoogleGenerativeAI(apiKey);
+  const model = genai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+  const result = await model.generateContent([
+    PROMPT,
+    { inlineData: { mimeType, data: base64 } },
+  ]);
+
+  return result.response.text().trim();
+}
+
+// OpenRouter — OpenAI-compatible API, uses Claude 3.5 Haiku (supports PDF via base64)
+async function extractWithOpenRouter(base64: string, mimeType: string): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://export-price-calculator.vercel.app',
+      'X-Title': 'Export Price Calculator',
+    },
+    body: JSON.stringify({
+      model: 'anthropic/claude-3.5-haiku',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: mimeType,
+                data: base64,
+              },
+            },
+            { type: 'text', text: PROMPT },
+          ],
+        },
+      ],
+      max_tokens: 2048,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenRouter error ${response.status}: ${err}`);
   }
 
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() ?? '';
+}
+
+function isQuotaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('resource_exhausted');
+}
+
+export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-    }
+    if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
 
     const bytes = await file.arrayBuffer();
     const base64 = Buffer.from(bytes).toString('base64');
     const mimeType = file.type || 'application/pdf';
 
-    const genai = new GoogleGenerativeAI(apiKey);
-    const model = genai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    let text: string;
+    let provider = 'gemini';
 
-    const result = await model.generateContent([
-      PROMPT,
-      {
-        inlineData: {
-          mimeType,
-          data: base64,
-        },
-      },
-    ]);
-
-    let text = result.response.text().trim();
-
-    // Strip markdown code fences if present
-    if (text.startsWith('```')) {
-      text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+    try {
+      text = await extractWithGemini(base64, mimeType);
+    } catch (err) {
+      if (isQuotaError(err) && process.env.OPENROUTER_API_KEY) {
+        // Gemini quota exhausted — fallback to OpenRouter
+        text = await extractWithOpenRouter(base64, mimeType);
+        provider = 'openrouter';
+      } else {
+        throw err;
+      }
     }
 
-    const parsed = JSON.parse(text);
-    return NextResponse.json(parsed);
+    const parsed = JSON.parse(stripFences(text));
+    return NextResponse.json({ ...parsed, _provider: provider });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
