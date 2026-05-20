@@ -74,7 +74,7 @@ export default function AccessPage() {
           <p className="mt-4 text-center text-xs text-gray-400">
             Chưa có mã?{' '}
             <a
-              href="https://whop.com/export-toolkit-pro/"
+              href="https://whop.com/joined/solo-export-ai-community/products/export-toolkit-pro-72/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
