@@ -70,7 +70,7 @@ async function extractWithOpenRouter(base64: string, mimeType: string): Promise<
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://export-price-calculator.vercel.app',
+      'HTTP-Referer': 'https://export-price-calculator-chi.vercel.app',
       'X-Title': 'Export Price Calculator',
     },
     body: JSON.stringify({

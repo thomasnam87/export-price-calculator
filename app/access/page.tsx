@@ -74,12 +74,12 @@ export default function AccessPage() {
           <p className="mt-4 text-center text-xs text-gray-400">
             Chưa có mã?{' '}
             <a
-              href="https://whop.com"
+              href="https://whop.com/export-toolkit-pro/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
             >
-              Mua access tại đây
+              Mua access tại đây →
             </a>
           </p>
         </form>
