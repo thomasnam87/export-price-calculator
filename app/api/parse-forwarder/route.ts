@@ -34,9 +34,14 @@ RULES:
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
 function stripFences(text: string): string {
-  return text.startsWith('```')
-    ? text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
-    : text;
+  let t = text.trim();
+  if (t.startsWith('```')) {
+    t = t.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+  }
+  // Extract JSON object if model wrapped it in prose
+  const match = t.match(/\{[\s\S]*\}/);
+  if (match) t = match[0];
+  return t;
 }
 
 async function extractWithGemini(base64: string, mimeType: string): Promise<string> {
@@ -70,6 +75,10 @@ async function extractWithOpenRouter(base64: string, mimeType: string): Promise<
     body: JSON.stringify({
       model: 'anthropic/claude-3.5-haiku',
       messages: [
+        {
+          role: 'system',
+          content: 'You are a JSON extraction API. You MUST respond with ONLY a valid JSON object. No explanation, no prose, no markdown — pure JSON only.',
+        },
         {
           role: 'user',
           content: [
