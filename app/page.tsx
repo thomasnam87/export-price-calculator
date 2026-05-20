@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { calculateAll, DEFAULT_FORM_STATE } from '@/lib/calculations';
 import { saveQuotation } from '@/lib/db';
 import { buildEmailText } from '@/lib/email';
 import { downloadPdf } from '@/lib/pdf';
 import type { FormState } from '@/types/schema';
 import type { SavedQuotation } from '@/types/schema';
+import {
+  loadCompanyProfile,
+  saveCompanyProfile,
+  loadSessionId,
+  DEFAULT_COMPANY_PROFILE,
+} from '@/types/company';
+import type { CompanyProfile } from '@/types/company';
 
 import ProductSection from '@/components/ProductSection';
 import PackingSection from '@/components/PackingSection';
@@ -16,6 +23,7 @@ import ProfitSection from '@/components/ProfitSection';
 import ResultsPanel from '@/components/ResultsPanel';
 import SavedQuotations from '@/components/SavedQuotations';
 import ForwarderUpload from '@/components/ForwarderUpload';
+import CompanyProfileModal from '@/components/CompanyProfileModal';
 
 export default function Home() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM_STATE);
@@ -23,6 +31,30 @@ export default function Home() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+
+  // Company profile + session — loaded client-side only
+  const [company, setCompany] = useState<CompanyProfile>(DEFAULT_COMPANY_PROFILE);
+  const [sessionId, setSessionId] = useState('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isFirstTime, setIsFirstTime] = useState(false);
+
+  useEffect(() => {
+    const profile = loadCompanyProfile();
+    setCompany(profile);
+    setSessionId(loadSessionId());
+    // Show modal on first visit (no company name set)
+    if (!profile.company_name) {
+      setIsFirstTime(true);
+      setShowProfileModal(true);
+    }
+  }, []);
+
+  function handleProfileSave(profile: CompanyProfile) {
+    saveCompanyProfile(profile);
+    setCompany(profile);
+    setShowProfileModal(false);
+    setIsFirstTime(false);
+  }
 
   const results = useMemo(() => calculateAll(form), [form]);
 
@@ -38,8 +70,8 @@ export default function Home() {
     setSaveError(null);
     try {
       const name = form.quotation_name.trim() || `${form.product_name || 'Quote'} — ${new Date().toLocaleDateString()}`;
-      await saveQuotation(name, form, results);
-    } catch (e) {
+      await saveQuotation(name, form, results, sessionId);
+    } catch {
       setSaveError('Save failed. Check Supabase connection.');
     } finally {
       setSaving(false);
@@ -47,13 +79,12 @@ export default function Home() {
   }
 
   async function handleCopy() {
-    const text = buildEmailText(form, results);
+    const text = buildEmailText(form, results, company);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // fallback
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
@@ -68,7 +99,7 @@ export default function Home() {
   async function handleExportPdf() {
     setPdfLoading(true);
     try {
-      await downloadPdf(form, results);
+      await downloadPdf(form, results, company);
     } finally {
       setPdfLoading(false);
     }
@@ -85,20 +116,42 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Company Profile Modal */}
+      {showProfileModal && (
+        <CompanyProfileModal
+          initialProfile={company}
+          onSave={handleProfileSave}
+          onClose={() => setShowProfileModal(false)}
+          isFirstTime={isFirstTime}
+        />
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div>
             <h1 className="text-lg font-bold text-blue-700">Export Price Calculator</h1>
-            <p className="text-xs text-gray-500">EXW → FOB → CFR → CIF · Happy Viet Ltd.</p>
+            <p className="text-xs text-gray-500">
+              EXW → FOB → CFR → CIF · {company.company_name || 'Thiết lập công ty'}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setForm(DEFAULT_FORM_STATE)}
-            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
-          >
-            Reset
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowProfileModal(true)}
+              title="Cài đặt công ty"
+              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
+            >
+              ⚙️ {company.company_name || 'Cài đặt'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm(DEFAULT_FORM_STATE)}
+              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </header>
 
@@ -133,7 +186,7 @@ export default function Home() {
 
         {/* Saved Quotations */}
         <div className="mt-8">
-          <SavedQuotations onLoad={handleLoad} />
+          <SavedQuotations onLoad={handleLoad} sessionId={sessionId} />
         </div>
       </main>
     </div>

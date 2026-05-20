@@ -1,4 +1,5 @@
 import type { FormState, CalculationResult } from '@/types/schema';
+import type { CompanyProfile } from '@/types/company';
 
 function usd(val: number, decimals = 4): string {
   return `$${val.toFixed(decimals)}`;
@@ -8,12 +9,18 @@ function usdTotal(val: number): string {
   return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function buildEmailText(inputs: FormState, results: CalculationResult): string {
+export function buildEmailText(
+  inputs: FormState,
+  results: CalculationResult,
+  company: CompanyProfile
+): string {
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
+
+  const contactLine = [company.company_email, company.company_phone].filter(Boolean).join(' · ');
 
   return `Dear Sir/Madam,
 
@@ -44,5 +51,5 @@ Payment     : TT 30% deposit, 70% before shipment
 Please do not hesitate to contact us for further details or to proceed with your order.
 
 Best regards,
-Happy Viet Ltd.`.trim();
+${company.company_name || 'Our Company'}${contactLine ? `\n${contactLine}` : ''}`.trim();
 }

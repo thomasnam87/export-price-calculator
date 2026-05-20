@@ -1,16 +1,17 @@
 import type { FormState, CalculationResult } from '@/types/schema';
+import type { CompanyProfile } from '@/types/company';
 
 export async function downloadPdf(
   inputs: FormState,
-  results: CalculationResult
+  results: CalculationResult,
+  company: CompanyProfile
 ): Promise<void> {
-  // Dynamically import to avoid SSR issues
   const { pdf } = await import('@react-pdf/renderer');
   const { default: PdfDocument } = await import('@/components/PdfDocument');
   const React = await import('react');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const element = React.createElement(PdfDocument, { inputs, results }) as any;
+  const element = React.createElement(PdfDocument, { inputs, results, company }) as any;
   const blob = await pdf(element).toBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

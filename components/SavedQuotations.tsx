@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { listQuotations, deleteQuotation } from '@/lib/db';
-import type { SavedQuotation, FormState } from '@/types/schema';
+import type { SavedQuotation } from '@/types/schema';
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -16,9 +16,10 @@ function fmtDate(iso: string): string {
 
 interface Props {
   onLoad: (saved: SavedQuotation) => void;
+  sessionId: string;
 }
 
-export default function SavedQuotations({ onLoad }: Props) {
+export default function SavedQuotations({ onLoad, sessionId }: Props) {
   const [open, setOpen] = useState(false);
   const [quotations, setQuotations] = useState<SavedQuotation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,12 +27,13 @@ export default function SavedQuotations({ onLoad }: Props) {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   async function load() {
+    if (!sessionId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await listQuotations();
+      const data = await listQuotations(sessionId);
       setQuotations(data);
-    } catch (e) {
+    } catch {
       setError('Failed to load saved quotations.');
     } finally {
       setLoading(false);
@@ -40,12 +42,13 @@ export default function SavedQuotations({ onLoad }: Props) {
 
   useEffect(() => {
     if (open) load();
-  }, [open]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sessionId]);
 
   async function handleDelete(id: string) {
     setDeleting(id);
     try {
-      await deleteQuotation(id);
+      await deleteQuotation(id, sessionId);
       setQuotations((prev) => prev.filter((q) => q.id !== id));
     } catch {
       setError('Delete failed.');
@@ -61,20 +64,14 @@ export default function SavedQuotations({ onLoad }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between px-6 py-4 text-left"
       >
-        <span className="text-base font-semibold text-gray-800">
-          Saved Quotations
-        </span>
+        <span className="text-base font-semibold text-gray-800">Saved Quotations</span>
         <span className="text-gray-400">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div className="border-t border-gray-100 px-6 pb-6 pt-4">
-          {loading && (
-            <p className="text-sm text-gray-400">Loading…</p>
-          )}
-          {error && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
+          {loading && <p className="text-sm text-gray-400">Loading…</p>}
+          {error && <p className="text-sm text-red-500">{error}</p>}
           {!loading && !error && quotations.length === 0 && (
             <p className="text-sm text-gray-400">
               No saved quotations yet. Fill in the form and click &quot;Save Quotation&quot;.
@@ -104,7 +101,7 @@ export default function SavedQuotations({ onLoad }: Props) {
                       <td className="py-2 pr-4 tabular-nums text-gray-600">
                         ${q.results.total_revenue_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="py-2 pr-4 text-gray-400 text-xs">{fmtDate(q.created_at)}</td>
+                      <td className="py-2 pr-4 text-xs text-gray-400">{fmtDate(q.created_at)}</td>
                       <td className="py-2">
                         <div className="flex gap-2">
                           <button
@@ -133,7 +130,7 @@ export default function SavedQuotations({ onLoad }: Props) {
           <button
             type="button"
             onClick={load}
-            className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline"
+            className="mt-3 text-xs text-gray-400 underline hover:text-gray-600"
           >
             Refresh
           </button>
